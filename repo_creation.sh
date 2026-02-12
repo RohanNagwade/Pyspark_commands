@@ -1,8 +1,8 @@
 # INITIAL: Install libraries required for python code and for parsing the config.yml file
-python3 -m venv myvenv
-source myvenv/bin/activate
-pip install pynacl
-pip install niet
+# python3 -m venv myvenv
+# source myvenv/bin/activate
+# pip install pynacl
+# pip install niet
  
  
  
@@ -45,10 +45,10 @@ fi
 ORG_NAME=$(niet ".resources.org_name" "$config_file_path")
 REPO_NAME=$(niet ".resources.repo_name" "$config_file_path")
 DESCRIPTION=$(python3 -c "print('$REPO_NAME' + '_description')")
-GITHUB_PERSONAL_ACCESS_TOKEN=$(niet ".resources.github_personal_access_token_classic" "$config_file_path")
+GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$(niet ".resources.github_personal_access_token_classic" "$config_file_path")}
 DATABRICKS_HOST_URL=$(niet ".resources.databricks_host" "$config_file_path")
 DATABRICKS_PROFILE_NAME=$(niet -s ".resources.databricks_profile_name" "$config_file_path" || echo "DEFAULT")
-DATABRICKS_ACCESS_TOKEN_DEV=$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "0")
+DATABRICKS_ACCESS_TOKEN_DEV=${DATABRICKS_ACCESS_TOKEN_DEV:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
 PROJECT_DIR=$(niet ".resources.target_directory_for_dab_project" "$config_file_path")
 ADD_RULES=$(niet -s ".resources.add_main_branch_rules" "$config_file_path" || echo True)
 SECRETS=$(niet -s ".resources.secrets" "$config_file_path" || echo "0")
@@ -65,268 +65,238 @@ echo ""
 # Creating a databricks-inputs.json file to pass while performing databricks bundle init
 write_to_json=$(python -c "
 import json
- 
-data={
-  'project_name': '$REPO_NAME',
+import shlex
+import sys
+import yaml
+
+cfg = yaml.safe_load(open(sys.argv[1], "r", encoding="utf-8")) or {}
+res = cfg.get("resources") or {}
+
+data = {
+    "ORG_NAME": res.get("org_name", ""),
+    "REPO_NAME": res.get("repo_name", ""),
+    "GITHUB_PERSONAL_ACCESS_TOKEN": res.get("github_personal_access_token_classic", ""),
+    "DATABRICKS_HOST_URL": res.get("databricks_host", ""),
+    "DATABRICKS_PROFILE_NAME": res.get("databricks_profile_name", "DEFAULT"),
+    "DATABRICKS_ACCESS_TOKEN_DEV": (res.get("secrets") or {}).get("MLP_DEV_SECRET", ""),
+    "PROJECT_DIR": res.get("target_directory_for_dab_project", ""),
+    "ADD_RULES": bool(res.get("add_main_branch_rules", True)),
+    "SECRETS_JSON": json.dumps(res.get("secrets") or {}),
+    "COLLABORATORS_JSON": json.dumps(res.get("collaborator_usernames") or {}),
 }
- 
-json_object = json.dumps(data)
- 
-with open('$PROJECT_DIR/databricks-inputs.json', 'w') as outfile:
-    outfile.write(json_object)
- 
-")
- 
- 
- 
- 
-# Navigating to the project directory before performing databricks bundle init
-cd "$PROJECT_DIR"
- 
- 
-if [[ "$DATABRICKS_ACCESS_TOKEN_DEV" != "0" ]]; then
-  echo "Running Databricks Configure..."
- 
-  # Exporting the required variables for databricks configure command
-  export DATABRICKS_HOST="$DATABRICKS_HOST_URL"
-  export DATABRICKS_TOKEN="$DATABRICKS_ACCESS_TOKEN_DEV"
-  export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
- 
-  # Performing databricks configure
-  databricks configure --token --profile "$DATABRICKS_PROFILE" --host "$DATABRICKS_HOST" --token "$DATABRICKS_TOKEN"
+
+description = f"{data['REPO_NAME']}_description" if data["REPO_NAME"] else ""
+data["DESCRIPTION"] = description
+
+for k, v in data.items():
+    if isinstance(v, bool):
+        v = "true" if v else "false"
+    print(f"{k}={shlex.quote(str(v))}")
+PY
+)"
+
+for required_var in ORG_NAME REPO_NAME GITHUB_PERSONAL_ACCESS_TOKEN PROJECT_DIR; do
+  if [[ -z "${!required_var}" ]]; then
+    echo "Error: Missing required value in config.yml: $required_var"
+    exit 1
+  fi
+done
+
+mkdir -p "$PROJECT_DIR"
+
+cat > "$PROJECT_DIR/databricks-inputs.json" <<EOF
+{"project_name":"$REPO_NAME"}
+EOF
+
+echo ""
+echo "[GitHub Repository Creation For $REPO_NAME]"
+echo ""
+
+if [[ -n "$DATABRICKS_ACCESS_TOKEN_DEV" && -n "$DATABRICKS_HOST_URL" ]]; then
+  export DATABRICKS_HOST="$DATABRICKS_HOST_URL"
+  export DATABRICKS_TOKEN="$DATABRICKS_ACCESS_TOKEN_DEV"
+  export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
 fi
- 
- 
- 
-# Performing databricks bundle init to create the DAB project directory inside the project directory specified in the config.yml file
-databricks bundle init https://github.com/ig-ds/MLP-DAB-Templates --output-dir="$PROJECT_DIR" --template-dir single-model-train --config-file="$PROJECT_DIR/databricks-inputs.json"
- 
- 
- 
-# Deleting the databricks-inputs.json file from the project directory and navigating inside the newly created DAB project
-rm "databricks-inputs.json"
- 
- 
- 
-# Check if the DAB project folder has been created or not, and display error message if not
-if [ ! -d "$PROJECT_DIR/$REPO_NAME" ]; then
-  echo ""
-  echo "Databricks Error: $PROJECT_DIR/$REPO_NAME does not exist. ❌"
-  echo "                  Please Verify that:"
-  echo "                     (1) the databricks_host or databricks_profile_name have been set correctly."
-  echo "                     (2) the databricks token possibly mentioned as MLP_DEV_SECRET has been set correctly."
-  echo "                  Also ensure that the target directory path for DAB Project is valid."
-  exit
+
+databricks bundle init https://github.com/ig-ds/MLP-DAB-Templates \
+  --output-dir="$PROJECT_DIR" \
+  --template-dir single-model-train \
+  --config-file="$PROJECT_DIR/databricks-inputs.json"
+
+rm -f "$PROJECT_DIR/databricks-inputs.json"
+
+if [[ ! -d "$PROJECT_DIR/$REPO_NAME" ]]; then
+  echo ""
+  echo "Databricks Error: $PROJECT_DIR/$REPO_NAME does not exist."
+  echo "Please verify databricks host/profile/token values and target directory path."
+  exit 1
 fi
- 
- 
- 
-# If DAB project is created successfully then navigate to it
+
 cd "$PROJECT_DIR/$REPO_NAME"
- 
- 
- 
-# Performing git operations to initialize the local directory for the DAB project
-git init
-echo ".vscode/" >> .gitignore
+
+git init -b main
+if ! grep -qxF ".vscode/" .gitignore 2>/dev/null; then
+  echo ".vscode/" >> .gitignore
+fi
 git add .
-git commit -m 'initial commit: Setup with create-dab-repo.sh script'
- 
- 
- 
-# Use github API to log the user in and create the repo
-echo "Logging User in and creating the Repo..."
-res=$(curl -L \
-  -X POST \
-  -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  -w "%{http_code}" \
-  -o /dev/null \
-  https://api.github.com/orgs/$ORG_NAME/repos \
-  -d '{
-    "name":"'$REPO_NAME'",
-    "description":"'$DESCRIPTION'",
-    "homepage":"https://github.com",
-    "private":true,
-    "visibility":"internal",
-    "has_issues":true,
-    "has_projects":true,
-    "has_wiki":true
-  }')
- 
- 
- 
-if [[ $res -eq 201 ]] ; then
-  echo "Success: User Logged in and $REPO_NAME Repository Has Been Created! ✅"
- 
- 
-  # Add the remote github repo to local repo and push
-  git remote add origin https://github.com/${ORG_NAME}/${REPO_NAME}.git
-  git push --set-upstream origin main
- 
- 
-  # Add Rules to protect the main branch
-  allow_rules=$(python3 -c "print(1 if $ADD_RULES == True else 0)")
-  if [ $allow_rules -eq 1 ]; then
-    echo "Setting up rules for $REPO_NAME Respository..."
-    response=$(curl -L \
-      -X PUT \
-      -H "Accept: application/vnd.github+json" \
-      -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      -w "%{http_code}" \
-      -o /dev/null \
-      https://api.github.com/repos/$ORG_NAME/$REPO_NAME/branches/main/protection \
-      -d '{
-        "required_status_checks":{
-          "strict":false,
-          "contexts":[]
-        },
-        "enforce_admins":null,
-        "required_pull_request_reviews":{
-          "dismissal_restrictions": {},
-          "required_approving_review_count":2,
-          "bypass_pull_request_allowances":{
-            "users":[],
-            "teams":[]
-          }
-        },
-        "restrictions":null,
-        "required_linear_history":false,
-        "allow_force_pushes":false,
-        "allow_deletions":false,
-        "block_creations":false,
-        "required_conversation_resolution":true,
-        "lock_branch":false,
-        "allow_fork_syncing":false
-      }')
-  
-    if [ $response -eq 200 ]; then
-      echo "Success: Rules Are Set for $REPO_NAME Repository ✅"
-    else
-      echo "Error: Couldn't Set Rules for $REPO_NAME Repository ❌"
-    fi
-  fi
- 
- 
- 
-  # Add Secrets to the Repository
- 
-  # Getting the public-key for encrypting the secrets
-  if [[ "$SECRETS" != "0" ]]; then
-    result=$(curl -L \
-      -H "Accept: application/vnd.github+json" \
-      -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      https://api.github.com/repos/$ORG_NAME/$REPO_NAME/actions/secrets/public-key
-    )
- 
-    PUBLIC_KEY_ID=$(python3 -c "print($result['key_id'])")
-    PUBLIC_KEY=$(python3 -c "print($result['key'])")
- 
-    is_key=0
-    for secret in $SECRETS;
-    do
-      if [ $is_key -eq 0 ]; then
-        SECRET_NAME=$(python3 -c "print('$secret'[:-1])")
-      else
-        SECRET_VALUE=$secret
-        
-        # Encrypt the secret using public key
-        ENCRYPTED_SECRET=$(python3 -c "
+git commit -m "initial commit: Setup with repo_creation.sh script"
+
+echo "Logging user in and creating the repo..."
+res=$(curl -sS -L \
+  -X POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -w "%{http_code}" \
+  -o /dev/null \
+  "https://api.github.com/orgs/$ORG_NAME/repos" \
+  -d '{
+    "name":"'"$REPO_NAME"'",
+    "description":"'"$DESCRIPTION"'",
+    "homepage":"https://github.com",
+    "private":true,
+    "has_issues":true,
+    "has_projects":true,
+    "has_wiki":true
+  }')
+
+if [[ "$res" == "201" ]]; then
+  echo "Success: $REPO_NAME repository created."
+
+  git remote add origin "https://github.com/${ORG_NAME}/${REPO_NAME}.git"
+  git push --set-upstream origin main
+
+  if [[ "${ADD_RULES,,}" == "true" ]]; then
+    echo "Setting up protection rules for $REPO_NAME..."
+    response=$(curl -sS -L \
+      -X PUT \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      -w "%{http_code}" \
+      -o /dev/null \
+      "https://api.github.com/repos/$ORG_NAME/$REPO_NAME/branches/main/protection" \
+      -d '{
+        "required_status_checks": {"strict": false, "contexts": []},
+        "enforce_admins": null,
+        "required_pull_request_reviews": {
+          "dismissal_restrictions": {},
+          "required_approving_review_count": 2,
+          "bypass_pull_request_allowances": {"users": [], "teams": []}
+        },
+        "restrictions": null,
+        "required_linear_history": false,
+        "allow_force_pushes": false,
+        "allow_deletions": false,
+        "block_creations": false,
+        "required_conversation_resolution": true,
+        "lock_branch": false,
+        "allow_fork_syncing": false
+      }')
+
+    if [[ "$response" == "200" ]]; then
+      echo "Success: Branch protection rules set."
+    else
+      echo "Error: Could not set branch protection rules (HTTP $response)."
+    fi
+  fi
+
+  if [[ "$SECRETS_JSON" != "{}" ]]; then
+    result=$(curl -sS -L \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "https://api.github.com/repos/$ORG_NAME/$REPO_NAME/actions/secrets/public-key")
+
+    PUBLIC_KEY_ID=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("key_id",""))' <<< "$result")
+    PUBLIC_KEY=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("key",""))' <<< "$result")
+
+    if [[ -z "$PUBLIC_KEY_ID" || -z "$PUBLIC_KEY" ]]; then
+      echo "Error: could not fetch repository public key for secrets."
+      exit 1
+    fi
+
+    while IFS=$'\t' read -r SECRET_NAME SECRET_VALUE; do
+      ENCRYPTED_SECRET=$(python3 - "$PUBLIC_KEY" "$SECRET_VALUE" <<'PY'
 from base64 import b64encode
 from nacl import encoding, public
- 
-public_key = '$PUBLIC_KEY'
-secret_value = '$SECRET_VALUE'
- 
-public_key = public.PublicKey(public_key.encode('utf-8'), encoding.Base64Encoder())
-sealed_box = public.SealedBox(public_key)
-encrypted = sealed_box.encrypt(secret_value.encode('utf-8'))
-print(b64encode(encrypted).decode('utf-8'))
-        ")
- 
-        # Add the encrypted secret to the repo
-        curl -L \
-        -X PUT \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        https://api.github.com/repos/$ORG_NAME/$REPO_NAME/actions/secrets/$SECRET_NAME \
-        -d '{
-          "encrypted_value":"'$ENCRYPTED_SECRET'",
-          "key_id":"'$PUBLIC_KEY_ID'"
-        }'
- 
-        echo "Secret $SECRET_NAME added to Repository Secrets ✅"
-      fi
-      is_key=$(python3 -c "print(1 if $is_key == 0 else 0)")
-    done
-  else
-    echo "No Secrets were specified in config.yml"
-  fi
- 
- 
-  # Adding Collaborators to the Repository
-  if [[ "$COLLABORATORS" != "0" ]]; then
-    is_key=0
-    for collaborator in $COLLABORATORS;
-    do
-      if [ $is_key -eq 0 ];then
-        collab_username=$(python3 -c "print('$collaborator'[:-1])")
-      else
-        collab_permission=$collaborator
-        colab_response=$(curl -L \
-        -X PUT \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        -w "%{http_code}" \
-        -o /dev/null \
-        https://api.github.com/repos/$ORG_NAME/$REPO_NAME/collaborators/$collab_username \
-        -d '{"permission":"'$collab_permission'"}')
- 
-        if [ $colab_response -eq 201 ]; then
-          echo "Success: New invitation is created for $collab_username, with permission to $collab_permission ✅"
-        elif [ $colab_response -eq 204 ]; then
-          echo "Code 204 Occured While Adding $collab_username as Collaborator ✅:
-          This can happen when
-            - an existing collaborator is added as a collaborator
-            - an organization member is added as an individual collaborator
-            - an existing team member (whose team is also a repository collaborator) is added as an individual collaborator
-          "
-        elif [ $colab_response -eq 403 ]; then
-          echo "Error While Adding $collab_username as Collaborator: Forbidden ❌"
-        else
-          echo "Error While Adding $collab_username as Collaborator: Validation failed, or the endpoint has been spammed ❌"
-          echo "Check if:"
-          echo "  - The Collaborator's Github Username is valid"
-          echo "  - The permission granted to the Collaborator is valid"
-        fi
-      fi
-      is_key=$(python3 -c "print(1 if $is_key == 0 else 0)")
-    done
-  else
-    echo "No Collaborators were specified in config.yml"
-  fi
- 
- 
- 
-  # Change to your project's root directory.
-  cd "$PROJECT_DIR/$REPO_NAME"
- 
-  echo "Finished ✅"
-  echo ""
-  echo "Go to https://github.com/$ORG_NAME/$REPO_NAME to see."
-  echo ""
-  echo " * You're now in your project root. *"
-  echo ""
-  $SHELL
- 
- 
-elif [[ $res -eq 422 ]] ; then
-  echo "Error While Creating Repository: Validation failed, or the endpoint has been spammed ❌"
+import sys
+
+public_key = sys.argv[1]
+secret_value = sys.argv[2]
+
+key = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
+sealed_box = public.SealedBox(key)
+encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
+print(b64encode(encrypted).decode("utf-8"))
+PY
+)
+
+      curl -sS -L \
+        -X PUT \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/$ORG_NAME/$REPO_NAME/actions/secrets/$SECRET_NAME" \
+        -d '{"encrypted_value":"'"$ENCRYPTED_SECRET"'", "key_id":"'"$PUBLIC_KEY_ID"'"}' \
+        >/dev/null
+
+      echo "Secret $SECRET_NAME added."
+    done < <(python3 - "$SECRETS_JSON" <<'PY'
+import json
+import sys
+
+secrets = json.loads(sys.argv[1])
+for k, v in secrets.items():
+    if k == "MLP_DEV_SECRET":
+        continue
+    print(f"{k}\t{v}")
+PY
+)
+  else
+    echo "No repository secrets specified in config.yml"
+  fi
+
+  if [[ "$COLLABORATORS_JSON" != "{}" ]]; then
+    while IFS=$'\t' read -r collab_username collab_permission; do
+      colab_response=$(curl -sS -L \
+        -X PUT \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        -w "%{http_code}" \
+        -o /dev/null \
+        "https://api.github.com/repos/$ORG_NAME/$REPO_NAME/collaborators/$collab_username" \
+        -d '{"permission":"'"$collab_permission"'"}')
+
+      if [[ "$colab_response" == "201" ]]; then
+        echo "Success: invitation created for $collab_username with $collab_permission."
+      elif [[ "$colab_response" == "204" ]]; then
+        echo "Info: $collab_username already has repository access (HTTP 204)."
+      elif [[ "$colab_response" == "403" ]]; then
+        echo "Error: forbidden while adding collaborator $collab_username."
+      else
+        echo "Error: failed to add collaborator $collab_username (HTTP $colab_response)."
+      fi
+    done < <(python3 - "$COLLABORATORS_JSON" <<'PY'
+import json
+import sys
+
+collabs = json.loads(sys.argv[1])
+for k, v in collabs.items():
+    print(f"{k}\t{v}")
+PY
+)
+  else
+    echo "No collaborators specified in config.yml"
+  fi
+
+  echo ""
+  echo "Finished"
+  echo "Go to https://github.com/$ORG_NAME/$REPO_NAME to see."
+  echo ""
+elif [[ "$res" == "422" ]]; then
+  echo "Error creating repository: validation failed, or endpoint has been spammed (HTTP 422)."
 else
-  echo "Error While Creating Repository: Request is Forbidden ❌"
+  echo "Error creating repository: request forbidden or failed (HTTP $res)."
 fi

@@ -1,0 +1,21 @@
+resources:
+  org_name: "your-github-org"
+  repo_name: "mlp-dab-test-repo"
+
+  github_personal_access_token_classic: ""   # Leave empty, injected via GH secret
+
+  databricks_host: "https://adb-123456789.0.azuredatabricks.net"
+  databricks_profile_name: "DEFAULT"
+
+  secrets:
+    MLP_DEV_SECRET: ""     # injected via GH secret
+    API_KEY: "your-api-key"
+    DB_PASSWORD: "your-db-password"
+
+  collaborator_usernames:
+    rohan123: "admin"
+    teammate1: "push"
+
+  target_directory_for_dab_project: "./output"
+
+  add_main_branch_rules: true
