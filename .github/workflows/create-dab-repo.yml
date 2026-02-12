@@ -42,4 +42,4 @@ jobs:
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          bash create-dab-repo.sh -p config.yml
+          bash repo_creation.sh -p config.yml
