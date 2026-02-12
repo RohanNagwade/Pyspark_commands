@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-echo "DATABRICKS_HOST=$DATABRICKS_HOST_URL"
-echo "DATABRICKS_TOKEN set? ${DATABRICKS_TOKEN:+yes}"
 # Default config path
 config_file_path="config.yml"
 
@@ -37,11 +35,19 @@ REPO_NAME=$(niet ".resources.repo_name" "$config_file_path")
 DESCRIPTION="${REPO_NAME}_description"
 
 GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$(niet ".resources.github_personal_access_token_classic" "$config_file_path")}
-DATABRICKS_HOST_URL=${DATABRICKS_HOST_URL:-$(niet ".resources.databricks_host" "$config_file_path")}
+DATABRICKS_HOST=${DATABRICKS_HOST:-$(niet ".resources.databricks_host" "$config_file_path")}
 DATABRICKS_PROFILE_NAME=$(niet -s ".resources.databricks_profile_name" "$config_file_path" || echo "DEFAULT")
-DATABRICKS_ACCESS_TOKEN_DEV=${DATABRICKS_ACCESS_TOKEN_DEV:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
+DATABRICKS_TOKEN=${DATABRICKS_TOKEN:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
 PROJECT_DIR=$(niet ".resources.target_directory_for_dab_project" "$config_file_path")
 ADD_RULES=$(niet -s ".resources.add_main_branch_rules" "$config_file_path" || echo "true")
+
+# Export for Databricks CLI
+export DATABRICKS_HOST
+export DATABRICKS_TOKEN
+export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
+
+echo "DATABRICKS_HOST=$DATABRICKS_HOST"
+echo "DATABRICKS_TOKEN set? ${DATABRICKS_TOKEN:+yes}"
 
 SECRETS_JSON=$(python3 - <<PY
 import json, yaml
@@ -62,9 +68,9 @@ echo "[GitHub Repository Creation For $REPO_NAME]"
 echo ""
 
 # Validate required values
-for required_var in ORG_NAME REPO_NAME GITHUB_PERSONAL_ACCESS_TOKEN PROJECT_DIR; do
+for required_var in ORG_NAME REPO_NAME GITHUB_PERSONAL_ACCESS_TOKEN PROJECT_DIR DATABRICKS_HOST DATABRICKS_TOKEN; do
     if [ -z "${!required_var}" ]; then
-        echo "Error: Missing required value in config.yml: $required_var"
+        echo "Error: Missing required value: $required_var"
         exit 1
     fi
 done
@@ -72,12 +78,6 @@ done
 mkdir -p "$PROJECT_DIR"
 
 echo '{"project_name":"'"$REPO_NAME"'"}' > "$PROJECT_DIR/databricks-inputs.json"
-
-if [ -n "$DATABRICKS_ACCESS_TOKEN_DEV" ] && [ -n "$DATABRICKS_HOST_URL" ]; then
-    export DATABRICKS_HOST="$DATABRICKS_HOST_URL"
-    export DATABRICKS_TOKEN="$DATABRICKS_ACCESS_TOKEN_DEV"
-    export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
-fi
 
 databricks bundle init https://github.com/ig-ds/MLP-DAB-Templates \
     --output-dir="$PROJECT_DIR" \

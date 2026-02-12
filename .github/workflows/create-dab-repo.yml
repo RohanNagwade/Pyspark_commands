@@ -1,10 +1,6 @@
 name: Create DAB Repository
 
 on:
-  # pull_request:
-  #   branches:
-  #     - main
-  #   types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 jobs:
@@ -41,6 +37,6 @@ jobs:
         env:
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_HOST_URL: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         run: |
           bash repo_creation.sh -p config.yml
