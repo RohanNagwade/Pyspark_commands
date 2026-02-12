@@ -77,21 +77,28 @@ done
 
 mkdir -p "$PROJECT_DIR"
 
+# Create the config file for bundle init
 echo '{"project_name":"'"$REPO_NAME"'"}' > "$PROJECT_DIR/databricks-inputs.json"
 
-databricks bundle https://github.com/RohanNagwade/TheDailyBugle_News_Website.github.io \
-    --output-dir="$PROJECT_DIR" \
+# Change to project directory before running bundle init
+cd "$PROJECT_DIR"
+
+# Run databricks bundle init (it creates files in current directory)
+databricks bundle init https://github.com/RohanNagwade/TheDailyBugle_News_Website.github.io \
     --template-dir single-model-train \
-    --config-file="$PROJECT_DIR/databricks-inputs.json"
+    --config-file="databricks-inputs.json"
 
-rm -f "$PROJECT_DIR/databricks-inputs.json"
+# Clean up the input file
+rm -f "databricks-inputs.json"
 
-if [ ! -d "$PROJECT_DIR/$REPO_NAME" ]; then
-    echo "Databricks Error: $PROJECT_DIR/$REPO_NAME does not exist."
+# Check if the repo directory was created
+if [ ! -d "$REPO_NAME" ]; then
+    echo "Databricks Error: $REPO_NAME directory does not exist."
     exit 1
 fi
 
-cd "$PROJECT_DIR/$REPO_NAME"
+# Move into the newly created repo directory
+cd "$REPO_NAME"
 
 git init -b main
 echo ".vscode/" >> .gitignore || true
