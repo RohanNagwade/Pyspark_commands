@@ -35,40 +35,18 @@ REPO_NAME=$(niet ".resources.repo_name" "$config_file_path")
 DESCRIPTION="${REPO_NAME}_description"
 
 GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$(niet ".resources.github_personal_access_token_classic" "$config_file_path")}
-DATABRICKS_HOST=${DATABRICKS_HOST:-$(niet ".resources.databricks_host" "$config_file_path")}
+DATABRICKS_HOST_URL=${DATABRICKS_HOST:-$(niet ".resources.databricks_host" "$config_file_path")}
 DATABRICKS_PROFILE_NAME=$(niet -s ".resources.databricks_profile_name" "$config_file_path" || echo "DEFAULT")
-DATABRICKS_TOKEN=${DATABRICKS_TOKEN:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
+DATABRICKS_ACCESS_TOKEN_DEV=${DATABRICKS_TOKEN:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
 PROJECT_DIR=$(niet ".resources.target_directory_for_dab_project" "$config_file_path")
 ADD_RULES=$(niet -s ".resources.add_main_branch_rules" "$config_file_path" || echo "true")
-
-# Export for Databricks CLI
-export DATABRICKS_HOST
-export DATABRICKS_TOKEN
-export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
-
-echo "DATABRICKS_HOST=$DATABRICKS_HOST"
-echo "DATABRICKS_TOKEN set? ${DATABRICKS_TOKEN:+yes}"
-
-SECRETS_JSON=$(python3 - <<PY
-import json, yaml
-cfg = yaml.safe_load(open("$config_file_path")) or {}
-print(json.dumps((cfg.get("resources") or {}).get("secrets") or {}))
-PY
-)
-
-COLLABORATORS_JSON=$(python3 - <<PY
-import json, yaml
-cfg = yaml.safe_load(open("$config_file_path")) or {}
-print(json.dumps((cfg.get("resources") or {}).get("collaborator_usernames") or {}))
-PY
-)
 
 echo ""
 echo "[GitHub Repository Creation For $REPO_NAME]"
 echo ""
 
 # Validate required values
-for required_var in ORG_NAME REPO_NAME GITHUB_PERSONAL_ACCESS_TOKEN PROJECT_DIR DATABRICKS_HOST DATABRICKS_TOKEN; do
+for required_var in ORG_NAME REPO_NAME GITHUB_PERSONAL_ACCESS_TOKEN PROJECT_DIR; do
     if [ -z "${!required_var}" ]; then
         echo "Error: Missing required value: $required_var"
         exit 1
@@ -77,13 +55,41 @@ done
 
 mkdir -p "$PROJECT_DIR"
 
-# Create the config file for bundle init
-echo '{"project_name":"'"$REPO_NAME"'"}' > "$PROJECT_DIR/databricks-inputs.json"
+# Creating a databricks-inputs.json file using Python (like the original script)
+python3 - <<PY
+import json
+
+data = {
+    'project_name': '$REPO_NAME',
+}
+
+json_object = json.dumps(data)
+
+with open('$PROJECT_DIR/databricks-inputs.json', 'w') as outfile:
+    outfile.write(json_object)
+PY
 
 # Change to project directory before running bundle init
 cd "$PROJECT_DIR"
 
-# Run databricks bundle init (it creates files in current directory)
+# Configure Databricks if token is available
+if [[ -n "$DATABRICKS_ACCESS_TOKEN_DEV" && -n "$DATABRICKS_HOST_URL" ]]; then
+    echo "Running Databricks Configure..."
+    
+    # Export the required variables for databricks configure command
+    export DATABRICKS_HOST="$DATABRICKS_HOST_URL"
+    export DATABRICKS_TOKEN="$DATABRICKS_ACCESS_TOKEN_DEV"
+    export DATABRICKS_PROFILE="$DATABRICKS_PROFILE_NAME"
+    
+    echo "DATABRICKS_HOST=$DATABRICKS_HOST"
+    echo "DATABRICKS_TOKEN set? ${DATABRICKS_TOKEN:+yes}"
+    
+    # Performing databricks configure
+    databricks configure --token --profile "$DATABRICKS_PROFILE_NAME" --host "$DATABRICKS_HOST_URL" --token "$DATABRICKS_ACCESS_TOKEN_DEV"
+fi
+
+# Run databricks bundle init
+# Note: Newer CLI versions don't support --output-dir, so we cd to PROJECT_DIR first
 databricks bundle init https://github.com/RohanNagwade/TheDailyBugle_News_Website.github.io \
     --template-dir single-model-train \
     --config-file="databricks-inputs.json"
@@ -93,13 +99,19 @@ rm -f "databricks-inputs.json"
 
 # Check if the repo directory was created
 if [ ! -d "$REPO_NAME" ]; then
-    echo "Databricks Error: $REPO_NAME directory does not exist."
+    echo ""
+    echo "Databricks Error: $PROJECT_DIR/$REPO_NAME does not exist. ❌"
+    echo "                  Please Verify that:"
+    echo "                     (1) the databricks_host or databricks_profile_name have been set correctly."
+    echo "                     (2) the databricks token possibly mentioned as MLP_DEV_SECRET has been set correctly."
+    echo "                  Also ensure that the target directory path for DAB Project is valid."
     exit 1
 fi
 
 # Move into the newly created repo directory
 cd "$REPO_NAME"
 
+# Initialize git repository
 git init -b main
 echo ".vscode/" >> .gitignore || true
 git add .
@@ -111,6 +123,7 @@ HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     -H "Accept: application/vnd.github+json" \
     -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/orgs/$ORG_NAME/repos" \
     -d '{
         "name":"'"$REPO_NAME"'",
@@ -119,18 +132,18 @@ HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     }')
 
 if [ "$HTTP_STATUS" = "201" ]; then
-    echo "Repository created successfully."
+    echo "Success: Repository $REPO_NAME Has Been Created! ✅"
 
     git remote add origin "https://github.com/${ORG_NAME}/${REPO_NAME}.git"
     git push --set-upstream origin main
 
+    echo ""
+    echo "Finished ✅"
+    echo ""
+    echo "Go to https://github.com/$ORG_NAME/$REPO_NAME to see."
+    echo ""
+
 else
-    echo "Error creating repository (HTTP $HTTP_STATUS)"
+    echo "Error creating repository (HTTP $HTTP_STATUS) ❌"
     exit 1
 fi
-
-echo ""
-echo "Finished"
-echo "Repository URL: https://github.com/$ORG_NAME/$REPO_NAME"
-echo ""
-
