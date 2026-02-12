@@ -35,7 +35,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sudo bash
 
       - name: Make Script Executable
-        run: chmod +x create-dab-repo.sh
+        run: chmod +x repo_creation.sh
 
       - name: Run Script
         env:
