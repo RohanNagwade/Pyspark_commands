@@ -79,7 +79,7 @@ mkdir -p "$PROJECT_DIR"
 
 echo '{"project_name":"'"$REPO_NAME"'"}' > "$PROJECT_DIR/databricks-inputs.json"
 
-databricks bundle init https://github.com/ig-ds/MLP-DAB-Templates \
+databricks bundle https://github.com/RohanNagwade/TheDailyBugle_News_Website.github.io \
     --output-dir="$PROJECT_DIR" \
     --template-dir single-model-train \
     --config-file="$PROJECT_DIR/databricks-inputs.json"
