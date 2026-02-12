@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "DATABRICKS_HOST=$DATABRICKS_HOST"
+echo "DATABRICKS_HOST=$DATABRICKS_HOST_URL"
 echo "DATABRICKS_TOKEN set? ${DATABRICKS_TOKEN:+yes}"
 # Default config path
 config_file_path="config.yml"
