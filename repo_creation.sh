@@ -35,7 +35,7 @@ REPO_NAME=$(niet ".resources.repo_name" "$config_file_path")
 DESCRIPTION="${REPO_NAME}_description"
 
 GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$(niet ".resources.github_personal_access_token_classic" "$config_file_path")}
-DATABRICKS_HOST_URL=$(niet ".resources.databricks_host" "$config_file_path")
+DATABRICKS_HOST_URL=${DATABRICKS_HOST_URL:-$(niet ".resources.databricks_host" "$config_file_path")}
 DATABRICKS_PROFILE_NAME=$(niet -s ".resources.databricks_profile_name" "$config_file_path" || echo "DEFAULT")
 DATABRICKS_ACCESS_TOKEN_DEV=${DATABRICKS_ACCESS_TOKEN_DEV:-$(niet -s ".resources.secrets.MLP_DEV_SECRET" "$config_file_path" || echo "")}
 PROJECT_DIR=$(niet ".resources.target_directory_for_dab_project" "$config_file_path")
