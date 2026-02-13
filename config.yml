@@ -1,6 +1,6 @@
 resources:
   org_name: "RohanNagwade"
-  repo_name: "mlp_dab_test_repo"
+  repo_name: "mlp_dab_test_repo_news"
 
   github_personal_access_token_classic: ""   # Leave empty, injected via GH secret
 
