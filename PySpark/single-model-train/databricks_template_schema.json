@@ -1,0 +1,12 @@
+{
+    "properties":{
+        "project_name":{
+            "type":"string",
+            "default":"my_project",
+            "description":"unique name for this project",
+            "order":1,
+            "pattern":"^[A-Za-z0-9_]*$",
+            "pattern_matching_failure_message":"Must consist of letter and underscores only"
+        }
+    }
+}
