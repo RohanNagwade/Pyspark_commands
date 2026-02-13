@@ -110,6 +110,10 @@ fi
 # Move into the newly created repo directory
 cd "$REPO_NAME"
 
+# Configure Git user identity (required for GitHub Actions)
+git config user.email "rohannagwade10@gmail.com"
+git config user.name "RohanNagwade"
+
 # Initialize git repository
 git init -b main
 echo ".vscode/" >> .gitignore || true
