@@ -141,7 +141,7 @@ HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
 if [ "$HTTP_STATUS" = "201" ]; then
     echo "Success: Repository $REPO_NAME Has Been Created! ✅"
 
-    git remote add origin "https://github.com/${ORG_NAME}/${REPO_NAME}.git"
+    git remote add origin "https://${GITHUB_PERSONAL_ACCESS_TOKEN}@github.com/${ORG_NAME}/${REPO_NAME}.git"
     git push --set-upstream origin main
 
     echo ""
