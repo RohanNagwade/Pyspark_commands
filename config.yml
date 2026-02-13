@@ -1,6 +1,6 @@
 resources:
   org_name: "your-github-org"
-  repo_name: "mlp-dab-test-repo"
+  repo_name: "mlp_dab_test_repo"
 
   github_personal_access_token_classic: ""   # Leave empty, injected via GH secret
 
