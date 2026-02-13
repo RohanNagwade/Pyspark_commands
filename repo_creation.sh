@@ -125,13 +125,13 @@ git add .
 git commit -m "initial commit: Setup with repo_creation.sh script"
 
 echo "Creating GitHub repository..."
-
+API_ENDPOINT="https://api.github.com/user/repos"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     -H "Accept: application/vnd.github+json" \
     -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/orgs/$ORG_NAME/repos" \
+    "$API_ENDPOINT" \
     -d '{
         "name":"'"$REPO_NAME"'",
         "description":"'"$DESCRIPTION"'",
