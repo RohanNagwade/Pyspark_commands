@@ -90,8 +90,7 @@ fi
 
 # Run databricks bundle init
 # Note: Newer CLI versions don't support --output-dir, so we cd to PROJECT_DIR first
-databricks bundle init https://github.com/RohanNagwade/TheDailyBugle_News_Website.github.io \
-    --template-dir single-model-train \
+databricks bundle init default-python \
     --config-file="databricks-inputs.json"
 
 # Clean up the input file
