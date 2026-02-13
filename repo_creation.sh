@@ -34,6 +34,9 @@ ORG_NAME=$(niet ".resources.org_name" "$config_file_path")
 REPO_NAME=$(niet ".resources.repo_name" "$config_file_path")
 DESCRIPTION="${REPO_NAME}_description"
 
+# Sanitize project name for Databricks (replace hyphens with underscores)
+PROJECT_NAME="${REPO_NAME//-/_}"
+
 GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$(niet ".resources.github_personal_access_token_classic" "$config_file_path")}
 DATABRICKS_HOST_URL=${DATABRICKS_HOST:-$(niet ".resources.databricks_host" "$config_file_path")}
 DATABRICKS_PROFILE_NAME=$(niet -s ".resources.databricks_profile_name" "$config_file_path" || echo "DEFAULT")
@@ -60,7 +63,7 @@ python3 - <<PY
 import json
 
 data = {
-    'project_name': '$REPO_NAME',
+    'project_name': '$PROJECT_NAME',
 }
 
 json_object = json.dumps(data)
@@ -111,8 +114,9 @@ fi
 cd "$REPO_NAME"
 
 # Configure Git user identity (required for GitHub Actions)
-git config user.email "rohannagwade10@gmail.com"
-git config user.name "RohanNagwade"
+git config user.email "github-actions[bot]@users.noreply.github.com"
+git config user.name "GitHub Actions Bot"
+git config --global init.defaultBranch main
 
 # Initialize git repository
 git init -b main
